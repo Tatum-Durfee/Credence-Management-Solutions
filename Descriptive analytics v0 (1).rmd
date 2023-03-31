@@ -1,0 +1,289 @@
+---
+fontsize: 12pt
+geometry: margin=1in
+linkcolor: black
+urlcolor: black
+output: pdf_document
+header-includes:
+- \usepackage{setspace}
+- \onehalfspacing
+---
+
+```{r setup3, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, highlight=FALSE, message=FALSE, warning=FALSE)
+```
+
+```{r, echo=FALSE}
+# Library statements
+library(knitr)
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(scales)
+library(readxl)
+```
+
+# Descriptive analytics
+
+## Identifying low income blocks
+We created a barplot below to show the percent of households in each block living below the poverty line of $25,000.
+
+```{r}
+# Read in income data
+income <- read_excel("income_formatted.xlsx")
+
+# Rename columns to remove spaces
+names(income)[names(income) == "Block Number"] <- "blockNumber"
+names(income)[names(income) == "Income Level"] <- "incomeLevel"
+
+# 1) Extract the numbers from the income levels,
+# 2) Remove special characters,
+# 3) Manually rename the '$200,000 or more' income level; and
+# 4) Convert income level values from char to numeric
+income$incomeLevel <- str_split(income$incomeLevel, " ", simplify = TRUE)[,3]
+income$incomeLevel <- str_replace_all(income$incomeLevel, "[^[:alnum:]]", "")
+income$incomeLevel[income$incomeLevel == 'more'] <- 200000
+income$incomeLevel <- as.numeric(income$incomeLevel)
+
+# Extract only the income levels below $25,000 
+income <- income[income$incomeLevel < 25000,]
+
+# Convert proportion values to percentages and convert to numeric
+income$Value <- as.numeric(gsub("%$","",income$Value)) * 100
+
+# Group income levels for each block together.
+income %>%
+  group_by(Neighborhood, blockNumber) %>%
+  summarize(Percentage = sum(as.numeric(Value))) -> new.income
+```
+
+
+```{r, fig.cap = "Annual household incomes below $25,000"}
+
+# Create bar graph indicating the percentage of households in each block
+# with annual incomes below $25,000
+ggplot(new.income, aes(x = blockNumber, y = Percentage)) +
+  geom_bar(stat = "identity", fill = "cadetblue1", color = "gray") + 
+  theme(panel.background = element_rect(fill = 'white', color = 'black'),
+        panel.grid.major.x = element_line(color = 'grey', linetype = 'dotted'),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text.y = element_text(size = 5),
+        plot.title = element_text(size = 10)) +
+  scale_x_continuous(breaks = new.income$blockNumber,
+                     labels = new.income$Neighborhood) +
+  scale_y_continuous(limits = c(0, 100),
+                     breaks = seq(0, 100, 10)) +
+  labs(x = "Neighborhood") +
+  coord_flip() 
+```
+
+
+This bar graph shows that certain blocks have a much higher percentage of household incomes below the established poverty rate of $25,000. There are 11 blocks with more than 30% of the households living in poverty.
+
+## Filtering out highly student populated blocks
+We can look more closely at the 11 blocks previously identified as having high poverty rates by creating a bar plot shown below of their percentages of population between 18 and 24 years old. Blocks with high percentages of 18 to 24 year olds may have more university students.
+
+```{r}
+# Read in age group data
+agegroups <- read_excel("income_formatted.xlsx", sheet = 2)
+
+# Rename columns to remove spaces
+names(agegroups)[names(agegroups) == "Block Number"] <- "blockNumber"
+names(agegroups)[names(agegroups) == "Age Group"] <- "ageGroup"
+
+# 1) Extract the numbers from the age groups,
+# 2) Manually rename the 'Under 5 years' age group; and
+# 3) Convert age group values from char to numeric
+agegroups$ageGroup <- str_split(agegroups$ageGroup, " ", simplify = TRUE)[,1]
+agegroups$ageGroup[agegroups$ageGroup == 'Under'] <- 0
+agegroups$ageGroup <- as.numeric(agegroups$ageGroup)
+
+# Convert age group proportions to percentages
+agegroups$Value = agegroups$Value * 100
+
+# Extract age groups that correspond to college-age students
+agegroups <- agegroups[agegroups$ageGroup >= 18 & agegroups$ageGroup < 25,]
+
+# Group age groups for each block together
+agegroups %>%
+  group_by(Neighborhood, blockNumber) %>%
+  summarize(Percentage = sum(as.numeric(Value))) -> new.agegroups
+```
+
+```{r, fig.cap = "Percentage of 11 low income blocks in 18-24 age range"}
+# Create bar graph indicating the percentage of 18-24 year-old residents
+# in the 11 blocks with the highest (>30%) poverty rate.
+ggplot(new.agegroups, aes(x = blockNumber, y = Percentage)) +
+  geom_bar(stat = "identity", fill = "tan1", color = "gray") + 
+  theme(panel.background = element_rect(fill = 'white', color = 'black'),
+        panel.grid.major.x = element_line(color = 'grey', linetype = 'dotted'),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text.y = element_text(size = 7),
+        plot.title = element_text(size = 10)) +
+  scale_x_continuous(breaks = new.agegroups$blockNumber,
+                     labels = new.agegroups$Neighborhood) +
+  scale_y_continuous(limits = c(0, 100),
+                     breaks = seq(0, 100, 10)) +
+  labs(x = "Neighborhood") +
+  coord_flip()
+```
+
+This bar graph shows that certain blocks have a much higher percentage of residents in the 18-24 age range. These high percentages indicate that these locations may be highly populated by students at the University of Virginia. 
+
+## Insight summary
+Our descriptive analysis shows that certain blocks have a higher percentage of households with lower household incomes, making them better areas for expansion for the City of Promise. However, some of these blocks have high percentages of 18-24 year olds. These high percentages may indicate a greater population of university students, which would skew the number of households with low income (as students typically will not be making large amounts of money). Students are not the target market for City of Promise, so it would be prudent to ignore those blocks with high 18-24 year old populations. Taking this into consideration, the remaining blocks with high poverty rates but low 18-24 year old population are 29 North/The Meadows/BRSC Region, Fifeville/Prospect & Orangedale Ave, Ridge St/Belmont/Garrett, and Venable/Rose Hill Dr & Birdwood/10th Street NW & Page St.
+
+## Analyzing Income Distributions of the Target Regions
+
+```{r}
+#Read in income data
+income <- read_excel("income_formatted.xlsx")
+
+#Rename columns to remove spaces
+names(income)[names(income) == "Block Number"] <- "blockNumber"
+names(income)[names(income) == "Income Level"] <- "incomeLevel"
+
+# Convert proportion values to percentages and convert to numeric
+income$Value <- as.numeric(gsub("%$","",income$Value)) * 100
+
+#Subset the data to include only the desired target region
+target_region_1 <- subset(income, 
+      Neighborhood =="Venable/Rose Hill Dr & Birdwood/10th Street NW & Page St")
+
+#List of the income levels
+income_levels <-c('Less than $10,000', '$10,000 to $14,999','$15,000 to $19,999' 
+              ,'$20,000 to $24,999','$25,000 to $29,999','$30,000 to $34,999',
+              '$35,000 to $39,999','$40,000 to $44,999','$45,000 to $49,999',  
+              '$50,000 to $59,999','$60,000 to $74,999','$75,000 to $99,999',
+              '$100,000 to $124,999','$125,000 to $149,999',
+              '$150,000 to $199,999','$200,000 or more')
+
+```
+
+This figure is analyzing the income distribution of block located in the neighborhoods of Venable/Rose Hill Dr & Birdwood/10th Street NW & Page St.
+
+```{r, fig.cap = "Income Distribution for Venable/Rose Hill Dr & Birdwood/10th Street NW & Page St"}
+#Graph the income distribution of the desired target region
+ggplot(target_region_1, aes(x = fct_inorder(incomeLevel), y = Value)) +
+  geom_bar(stat = "identity", fill = "darkblue", color = "gray") + 
+  theme(panel.background = element_rect(fill = 'white', color = 'black'),
+        panel.grid.major.x = element_line(color = 'grey', linetype = 'dotted'),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text.y = element_text(size = 10),
+        plot.title = element_text(size = 10)) +
+  scale_y_continuous(limits = c(0, 20),
+                     breaks = seq(0, 20, 2)) +
+  labs(x = "Income Levels") +
+  geom_text(aes(label = round(Value, 1)), size = 3, hjust = -0.25, color = "sienna") +
+  coord_flip()
+
+```
+
+## Insight summary
+
+This figure indicates that the income distribution of the Venable/Rose Hill Dr & Birdwood/10th Street NW & Page St region is dispersed fairly evenly. There are 364 households in this block with 189 of them having an annual income below 35,000 dollars. This means there is a decent size population that could be in need of City of Promise's services, but also a large section of population that would not be in need of their services. These 189 households is likely too small of a sample size too expand to, so further data could be used to see if there is another grouping of this population that would better fit City of Promise's expansion if expansion to this region happens at all.
+
+
+
+```{r}
+#Subset the data to include only the desired target region
+target_region_2 <- subset(income, Neighborhood =="Ridge St/Belmont/Garrett")
+
+```
+
+This figure is analyzing the income distribution of block located in the neighborhoods of Ridge St/Belmont/Garrett.
+
+```{r, fig.cap = "Income Distribution for Ridge St/Belmont/Garrett"}
+#Graph the income distribution of the desired target region
+ggplot(target_region_2, aes(x = fct_inorder(incomeLevel), y = Value)) +
+  geom_bar(stat = "identity", fill = "darkblue", color = "gray") + 
+  theme(panel.background = element_rect(fill = 'white', color = 'black'),
+        panel.grid.major.x = element_line(color = 'grey', linetype = 'dotted'),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text.y = element_text(size = 10),
+        plot.title = element_text(size = 10)) +
+  scale_y_continuous(limits = c(0, 22),
+                     breaks = seq(0, 22, 2)) +
+  labs(x = "Income Levels") +
+  geom_text(aes(label = round(Value, 1)), size = 3, hjust = -0.25, color = "sienna") +
+  coord_flip()
+```
+
+## Insight summary
+
+This figure indicates that the income distribution of the block in Ridge St/Belmont/Garrett has a strong percentage of the population at either end of the income distribution. There are 742 households in this block, with 361 of them having a household income below 35,000 dollars. These 361 household make up a large population that could benefit from City of Promise's services. There is a region within this block that City of Promise should consider expanding to since it is a large enough population in need of their services.  
+
+
+```{r}
+#Subset the data to include only the desired target region
+target_region_3 <- subset(income, 
+                          Neighborhood =="Fifeville/Prospect & Orangedale Ave")
+
+```
+
+
+This figure is analyzing the income distribution of block located in the neighborhoods of Fifeville/Prospect & Orangedale Ave.
+
+```{r, fig.cap = "Income Distribution for Fifeville/Prospect & Orangedale Ave"}
+#Graph the income distribution of the desired target region
+ggplot(target_region_3, aes(x = fct_inorder(incomeLevel), y = Value)) +
+  geom_bar(stat = "identity", fill = "darkblue", color = "gray") + 
+  theme(panel.background = element_rect(fill = 'white', color = 'black'),
+        panel.grid.major.x = element_line(color = 'grey', linetype = 'dotted'),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text.y = element_text(size = 10),
+        plot.title = element_text(size = 10)) +
+  scale_y_continuous(limits = c(0, 30),
+                     breaks = seq(0, 30, 2)) +
+  labs(x = "Income Levels") +
+  geom_text(aes(label = round(Value, 1)), size = 3, hjust = -0.25, color = "sienna") +
+  coord_flip()
+
+```
+
+## Insight summary 
+
+This figure indicates that the income distribution of the block in the neighborhoods of Fifeville/Prospect & Orangedale Ave has a large percentage of the population with a household income below 10,000 dollars. There are 653 households in this block, with 364 of them with a household income below 35,000 dollars. These 364 households are large enough to warrant expansion to this region. Again all of this region is not in need of City of Promise's services,but there is a significant quantity is. This region is the region I would recommend most strongly for expansion.
+
+
+```{r}
+#Subset the data to include only the desired target region
+target_region_4 <- subset(income, 
+                          Neighborhood =="29 North/The Meadows/BRSC Region")
+
+```
+
+This figure is analyzing the income distribution of block located in the neighborhoods of 29 North/The Meadows/BRSC Region.
+
+```{r, fig.cap = "Income Distribution for 29 North/The Meadows/BRSC Region"}
+#Graph the income distribution of the desired target region
+ggplot(target_region_4, aes(x = fct_inorder(incomeLevel), y = Value)) +
+  geom_bar(stat = "identity", fill = "darkblue", color = "gray") + 
+  theme(panel.background = element_rect(fill = 'white', color = 'black'),
+        panel.grid.major.x = element_line(color = 'grey', linetype = 'dotted'),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.text.y = element_text(size = 10),
+        plot.title = element_text(size = 10)) +
+  scale_y_continuous(limits = c(0, 16),
+                     breaks = seq(0, 16, 2)) +
+  labs(x = "Income Levels") +
+  geom_text(aes(label = round(Value, 1)), size = 3, hjust = -0.25, color = "sienna") +
+  coord_flip()
+  
+```
+
+## Insight summary 
+This figure indicates that the income distribution of the block in the neighborhoods of 29 North/The Meadows/BRSC Region is fairly evenly distributed across all of the income levels. There are 573 total neighborhoods with 241 having a household income below 35,000 dollars. This is a substantial proportion of the population within this block, along I would not recommend expanding to service just these 241 households. If there is an area located near this block that could also be in need of City of Promise's services it would be worth expansion, but as it is currently distributed I would not recommend expansion to this region.   
+
